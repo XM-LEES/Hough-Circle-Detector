@@ -1,23 +1,19 @@
-
-# 在这个版本中，图像标签的尺寸被固定，这避免了图框大小随图像变化的问题。
-# 同时，界面的整体布局和样式也进行了调整，以达到更加美观和一致的效果。
-# 确保你有一个名为 icon.png 的图标文件在应用的目录中，用于设置窗口图标，
-# 这会使应用看起来更专业。如果没有图标文件，可以从这行代码中移除 setWindowIcon 相关的部分。
 import sys
 import os
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QHBoxLayout
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtCore import Qt
+from hough_circle import Hough_Detector
 
 class ImageViewer(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
+        self.Hough_Detector = None
         
     def initUI(self):
         # 设置窗口参数
         self.setWindowTitle('图像浏览器')
-        # self.setWindowIcon(QIcon('icon.png'))  # 设置窗口图标，确保当前目录下有icon.png文件
         self.setGeometry(100, 100, 900, 700)
         self.current_image_index = 0
         self.images = []
@@ -49,10 +45,17 @@ class ImageViewer(QWidget):
 
         # 布局和控件
         layout = QVBoxLayout()
+        # 添加一个 QLabel 控件用于显示图片
         self.image_label = QLabel(self)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setFixedSize(800, 600)  # 设置固定大小
+        
+        # 添加一个 QLabel 控件用于显示提示信息
+        self.message_label = QLabel(self)
+        self.message_label.setAlignment(Qt.AlignCenter)
+        # self.message_label.setFixedSize(800, 100)  # 设置固定大小
 
+        # 添加按钮
         button_layout = QHBoxLayout()
         self.btn_previous = QPushButton('前一张', self)
         self.btn_next = QPushButton('后一张', self)
@@ -72,13 +75,18 @@ class ImageViewer(QWidget):
         button_layout.addWidget(self.btn_next)
         button_layout.addWidget(self.btn_process)
         button_layout.addWidget(self.btn_auto_process)
+
+        # layout.addWidget(self.message_label)
         layout.addWidget(self.image_label)
+        layout.addWidget(self.message_label)
         layout.addWidget(self.btn_open_folder)
         layout.addLayout(button_layout)
-        # layout.addWidget(self.btn_open_folder)
         layout.setAlignment(Qt.AlignCenter)  # 居中布局
 
         self.setLayout(layout)
+
+    def show_message(self, message):
+        self.message_label.setText(message)
 
     def open_folder(self):
         folder_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
@@ -87,6 +95,7 @@ class ImageViewer(QWidget):
             self.modified = [False for _ in range(len(self.images))]
             self.current_image_index = 0
             self.show_image()
+            self.show_message("打开文件夹：" + folder_path)
 
     def show_image(self):
         if self.images:
@@ -110,7 +119,14 @@ class ImageViewer(QWidget):
                 return
 
             self.modified[self.current_image_index] = True
-            print("处理图像: " + self.images[self.current_image_index])
+
+            image_path = self.images[self.current_image_index]
+            self.Hough_Detector = Hough_Detector(image_path)
+            
+            circles = self.Hough_Detector.detect_circles()
+            self.Hough_Detector.display_circles(circles)
+
+            print("处理图像: " + image_path)
 
     def auto_process_image(self):
         if self.images:
