@@ -2,8 +2,26 @@ import sys
 import os
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QHBoxLayout
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread
 from hough_circle import detect_circles, display_circles
+
+class AutoProcessThread(QThread):
+    def __init__(self, parent=None):
+        super(AutoProcessThread, self).__init__(parent)
+
+    def run(self):
+        i = 0
+        for image_path in self.parent().images:
+            if self.parent().circles[i] is None:
+                circles = detect_circles(image_path=image_path)
+                if circles is None:
+                    circles = 0
+                self.parent().circles[i] = circles
+                i += 1
+                print("处理图像: " + image_path)
+            else:
+                i += 1
+        self.parent().show_image_detected()
 
 class ImageViewer(QWidget):
     def __init__(self):
@@ -17,6 +35,7 @@ class ImageViewer(QWidget):
         self.current_image_index = 0
         self.images = []
         self.circles = []
+        self.auto_process_thread = None
 
         # 应用样式表
         self.setStyleSheet("""
@@ -178,27 +197,31 @@ class ImageViewer(QWidget):
             self.show_image_detected()
             print("处理图像: " + self.images[self.current_image_index])
 
+    # def auto_process_image(self):
+    #     if self.images:
+    #         i = 0
+    #         for image_path in self.images:
+    #             if self.circles[i] is None:
+    #                 circles = detect_circles(image_path=image_path)
+    #                 if circles is None:
+    #                     circles = 0
+    #                 self.circles[i] = circles
+    #                 i = i + 1
+    #                 print("处理图像: " + image_path)
+    #             else:
+    #                 i = i + 1
+    #         self.show_image_detected()
+
     def auto_process_image(self):
         if self.images:
-            i = 0
-            for image_path in self.images:
-                if self.circles[i] is None:
-                    circles = detect_circles(image_path=image_path)
-                    if circles is None:
-                        circles = 0
-                    self.circles[i] = circles
-                    i = i + 1
-                    print("处理图像: " + image_path)
-                else:
-                    i = i + 1
-            self.show_image_detected()
+            self.auto_process_thread = AutoProcessThread(parent=self)
+            self.auto_process_thread.start()
 
     def save_list(self):
         # Saving lists to a file as an example
         with open('saved_lists.txt', 'w') as f:
             for item1, item2 in zip(self.images, self.circles):
                 f.write(f'{item1}\t{item2}\n')
-
         print("Lists saved successfully!")
 
 if __name__ == '__main__':
