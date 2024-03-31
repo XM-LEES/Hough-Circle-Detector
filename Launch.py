@@ -1,6 +1,6 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QHBoxLayout, QSlider
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QHBoxLayout
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
 from hough_circle import detect_circles, display_circles
@@ -9,7 +9,6 @@ class ImageViewer(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
-
 
     def initUI(self):
         # 设置窗口参数
@@ -47,19 +46,6 @@ class ImageViewer(QWidget):
         # 布局和控件
         layout = QVBoxLayout()
 
-        # # 滑块
-        # self.slider = QSlider(Qt.Horizontal)
-        # self.slider.setMinimum(0)
-        # self.slider.setMaximum(2)  # 三个固定位置
-        # self.slider.setTickInterval(1)
-        # self.slider.setSingleStep(1)  # 设置单步步长为1
-        # self.slider.setPageStep(1)    # 设置页步长为1，用于拖动时的增量
-        # self.slider.setTickPosition(QSlider.TicksBelow)
-        # self.slider.valueChanged.connect(self.on_slider_value_changed)
-        # self.slider.setFixedSize(200, 30)
-        # # self.slider.setTickLabels(["Position A", "Position B", "Position C"])  # 设置刻度的文本标签
-        # # self.slider.value()
-        
         # 添加 QLabel 控件用于显示图片
         image_layout = QHBoxLayout()
         self.original_image_label = QLabel(self)
@@ -80,6 +66,8 @@ class ImageViewer(QWidget):
 
         # 添加按钮
         button_layout = QHBoxLayout()
+        button_layout2 = QHBoxLayout()
+
         self.btn_previous = QPushButton('前一张', self)
         self.btn_next = QPushButton('后一张', self)
         self.btn_process = QPushButton('处理图像', self)
@@ -93,7 +81,6 @@ class ImageViewer(QWidget):
         self.btn_auto_process.clicked.connect(self.auto_process_image)
         self.btn_open_folder.clicked.connect(self.open_folder)
         self.btn_save.clicked.connect(self.save_list)
-       
         # 将控件添加到布局
         image_layout.addWidget(self.original_image_label)
         image_layout.addWidget(self.detected_image_label)
@@ -103,27 +90,16 @@ class ImageViewer(QWidget):
         button_layout.addWidget(self.btn_next)
         button_layout.addWidget(self.btn_process)
         button_layout.addWidget(self.btn_auto_process)
+        button_layout2.addWidget(self.btn_open_folder)
+        button_layout2.addWidget(self.btn_save)
 
         layout.addLayout(image_layout)
         layout.addLayout(message_layout)
         layout.addWidget(self.message_label3)
-        layout.addWidget(self.btn_open_folder)
         layout.addLayout(button_layout)
-        layout.addWidget(self.btn_save)
-        # layout.addWidget(self.slider)
-        layout.setAlignment(Qt.AlignCenter)  # 居中布局
-
+        layout.addLayout(button_layout2)
+        layout.setAlignment(Qt.AlignCenter)
         self.setLayout(layout)
-
-
-    # def on_slider_value_changed(self, value):
-    #     if value == 0:
-    #         self.show_message1("Slider value changed to A")
-    #     elif value == 1:
-    #         self.show_message1("Slider value changed to B")
-    #     elif value == 2:
-    #         self.show_message1("Slider value changed to C")
-
 
     def show_message1(self, message):
         self.message_label1.setText(message)
@@ -157,24 +133,25 @@ class ImageViewer(QWidget):
             self.show_message1("文件夹下无图片")
 
     def show_image_detected(self):
-            image_path = self.images[self.current_image_index]
-            circles = self.circles[self.current_image_index]
-            if circles is None:
-                self.detected_image_label.setPixmap(QPixmap(""))
-                self.show_message2("待检测")
-                return
-            elif circles is 0:
-                self.detected_image_label.setPixmap(QPixmap(""))
-                self.show_message2("未检测到瓶口")
-                return
+            if self.images:
+                image_path = self.images[self.current_image_index]
+                circles = self.circles[self.current_image_index]
+                if circles is None:
+                    self.detected_image_label.setPixmap(QPixmap(""))
+                    self.show_message2("待检测")
+                    return
+                elif circles is 0:
+                    self.detected_image_label.setPixmap(QPixmap(""))
+                    self.show_message2("未检测到瓶口")
+                    return
 
-            processed_image = display_circles(image_path, circles)
-            height, width, _ = processed_image.shape
-            bytes_per_line = 3 * width
-            q_image = QImage(processed_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
-            pixmap = QPixmap.fromImage(q_image)
-            self.detected_image_label.setPixmap(pixmap.scaled(self.detected_image_label.width(), self.detected_image_label.height(), Qt.KeepAspectRatio))
-            self.show_message2(f"瓶口位置：{circles}")
+                processed_image = display_circles(image_path, circles)
+                height, width, _ = processed_image.shape
+                bytes_per_line = 3 * width
+                q_image = QImage(processed_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                pixmap = QPixmap.fromImage(q_image)
+                self.detected_image_label.setPixmap(pixmap.scaled(self.detected_image_label.width(), self.detected_image_label.height(), Qt.KeepAspectRatio))
+                self.show_message2(f"瓶口位置：{circles}")
 
     def show_previous_image(self):
         if self.images:
@@ -199,28 +176,12 @@ class ImageViewer(QWidget):
                 circles = 0
             self.circles[self.current_image_index] = circles
             self.show_image_detected()
-            # print("处理图像: " + image_path)
+            print("处理图像: " + self.images[self.current_image_index])
 
     def auto_process_image(self):
         if self.images:
             i = 0
             for image_path in self.images:
-                if self.circles[i] is None:
-                    circles = detect_circles(image_path=image_path)
-                    if circles is None:
-                        circles = 0
-                    self.circles[i] = circles
-                    i = i + 1
-                    print("处理图像: " + image_path)
-                else:
-                    i = i + 1
-            self.show_image_detected()
-
-    def auto_process_image(self):
-        if self.images:
-            i = 0
-            for image_path in self.images:
-
                 if self.circles[i] is None:
                     circles = detect_circles(image_path=image_path)
                     if circles is None:
