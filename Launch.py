@@ -3,14 +3,12 @@ import os
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QHBoxLayout, QSlider
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
-# from hough_circle import detect_circles, display_circles
-from hough_circle import Hough_Detector
+from hough_circle import detect_circles, display_circles
 
 class ImageViewer(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
-        # self.Hough_Detector = None
 
 
     def initUI(self):
@@ -19,6 +17,7 @@ class ImageViewer(QWidget):
         self.setGeometry(100, 100, 900, 700)
         self.current_image_index = 0
         self.images = []
+        self.circles = []
 
         # 应用样式表
         self.setStyleSheet("""
@@ -86,13 +85,15 @@ class ImageViewer(QWidget):
         self.btn_process = QPushButton('处理图像', self)
         self.btn_auto_process = QPushButton('自动批量处理', self)
         self.btn_open_folder = QPushButton('选择文件夹', self)
+        self.btn_save = QPushButton('保存结果', self)
         # 事件绑定
         self.btn_previous.clicked.connect(self.show_previous_image)
         self.btn_next.clicked.connect(self.show_next_image)
         self.btn_process.clicked.connect(self.process_image)
         self.btn_auto_process.clicked.connect(self.auto_process_image)
         self.btn_open_folder.clicked.connect(self.open_folder)
-        
+        self.btn_save.clicked.connect(self.save_list)
+       
         # 将控件添加到布局
         image_layout.addWidget(self.original_image_label)
         image_layout.addWidget(self.detected_image_label)
@@ -108,6 +109,7 @@ class ImageViewer(QWidget):
         layout.addWidget(self.message_label3)
         layout.addWidget(self.btn_open_folder)
         layout.addLayout(button_layout)
+        layout.addWidget(self.btn_save)
         # layout.addWidget(self.slider)
         layout.setAlignment(Qt.AlignCenter)  # 居中布局
 
@@ -136,10 +138,13 @@ class ImageViewer(QWidget):
         folder_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
         if folder_path:
             self.images = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif'))]
-            self.modified = [None for _ in range(len(self.images))]
+            self.circles = [None for _ in range(len(self.images))]
             self.current_image_index = 0
             self.show_message3(f"当前文件夹：{folder_path}")
+            self.show_message2("")
+
             self.show_image()
+            self.show_image_detected()
 
     def show_image(self):
         if self.images:
@@ -148,87 +153,95 @@ class ImageViewer(QWidget):
             self.show_message1("当前图片：" + self.images[self.current_image_index])
             self.show_message3(f"{self.current_image_index + 1} / {len(self.images)}")
         else:
+            self.original_image_label.setPixmap(QPixmap(""))
             self.show_message1("文件夹下无图片")
+
+    def show_image_detected(self):
+            image_path = self.images[self.current_image_index]
+            circles = self.circles[self.current_image_index]
+            if circles is None:
+                self.detected_image_label.setPixmap(QPixmap(""))
+                self.show_message2("待检测")
+                return
+            elif circles is 0:
+                self.detected_image_label.setPixmap(QPixmap(""))
+                self.show_message2("未检测到瓶口")
+                return
+
+            processed_image = display_circles(image_path, circles)
+            height, width, _ = processed_image.shape
+            bytes_per_line = 3 * width
+            q_image = QImage(processed_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            self.detected_image_label.setPixmap(pixmap.scaled(self.detected_image_label.width(), self.detected_image_label.height(), Qt.KeepAspectRatio))
+            self.show_message2(f"瓶口位置：{circles}")
 
     def show_previous_image(self):
         if self.images:
             self.current_image_index = (self.current_image_index - 1) % len(self.images)
             self.show_image()
+            self.show_image_detected()
 
     def show_next_image(self):
         if self.images:
             self.current_image_index = (self.current_image_index + 1) % len(self.images)
             self.show_image()
+            self.show_image_detected()
 
     def process_image(self):
         if self.images:
-
-            if self.modified[self.current_image_index] != None:
+            if self.circles[self.current_image_index] is not None:
+                self.show_image_detected()
                 return
 
-            # self.modified[self.current_image_index] = True
-
-            image_path = self.images[self.current_image_index]
-
-            self.Hough_Detector = Hough_Detector(image_path)
-            circles, processed_image = self.Hough_Detector.detect_circles()
-
-            # circles = detect_circles(image_path=image_path)
-            # processed_image = display_circles(image_path, circles)
-
-
-            # 将 OpenCV 图像转换为 QImage
-            height, width, _ = processed_image.shape
-            bytes_per_line = 3 * width
-            q_image = QImage(processed_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
-            # 将 QImage 转换为 QPixmap
-            pixmap = QPixmap.fromImage(q_image)
-            # 显示处理后的图像
-            self.detected_image_label.setPixmap(pixmap.scaled(self.detected_image_label.width(), self.detected_image_label.height(), Qt.KeepAspectRatio))
-
-            print("处理图像: " + image_path)
-
+            circles = detect_circles(image_path=self.images[self.current_image_index])
+            if circles is None:
+                circles = 0
+            self.circles[self.current_image_index] = circles
+            self.show_image_detected()
+            # print("处理图像: " + image_path)
 
     def auto_process_image(self):
         if self.images:
-            for i in range(len(self.images)):
-                self.show_image()
-                self.process_image()
-                self.current_image_index = (self.current_image_index + 1) % len(self.images)
+            i = 0
+            for image_path in self.images:
+                if self.circles[i] is None:
+                    circles = detect_circles(image_path=image_path)
+                    if circles is None:
+                        circles = 0
+                    self.circles[i] = circles
+                    i = i + 1
+                    print("处理图像: " + image_path)
+                else:
+                    i = i + 1
+            self.show_image_detected()
 
+    def auto_process_image(self):
+        if self.images:
+            i = 0
+            for image_path in self.images:
+
+                if self.circles[i] is None:
+                    circles = detect_circles(image_path=image_path)
+                    if circles is None:
+                        circles = 0
+                    self.circles[i] = circles
+                    i = i + 1
+                    print("处理图像: " + image_path)
+                else:
+                    i = i + 1
+            self.show_image_detected()
+
+    def save_list(self):
+        # Saving lists to a file as an example
+        with open('saved_lists.txt', 'w') as f:
+            for item1, item2 in zip(self.images, self.circles):
+                f.write(f'{item1}\t{item2}\n')
+
+        print("Lists saved successfully!")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = ImageViewer()
     ex.show()
     sys.exit(app.exec_())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
