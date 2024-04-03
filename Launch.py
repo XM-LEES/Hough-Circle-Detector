@@ -1,11 +1,12 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QHBoxLayout, QProgressBar
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from hough_circle import detect_circles, display_circles
 
 class AutoProcessThread(QThread):
+    progress_updated = pyqtSignal(int)
     def __init__(self, parent=None):
         super(AutoProcessThread, self).__init__(parent)
 
@@ -15,13 +16,17 @@ class AutoProcessThread(QThread):
             if self.parent().circles[i] is None:
                 circles = detect_circles(image_path=image_path)
                 if circles is None:
-                    circles = 0
+                    circles = False
+                else:
+                    self.parent().detected += 1
                 self.parent().circles[i] = circles
                 i += 1
                 print("处理图像: " + image_path)
             else:
                 i += 1
+            self.progress_updated.emit(i)
         self.parent().show_image_detected()
+
 
 class ImageViewer(QWidget):
     def __init__(self):
@@ -65,14 +70,19 @@ class ImageViewer(QWidget):
         # 布局和控件
         layout = QVBoxLayout()
 
+        # 进度条
+        result_layout = QHBoxLayout()
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setFixedSize(600, 20) 
+
         # 添加 QLabel 控件用于显示图片
         image_layout = QHBoxLayout()
         self.original_image_label = QLabel(self)
         self.original_image_label.setAlignment(Qt.AlignCenter)
-        self.original_image_label.setFixedSize(600, 450)  # 设置固定大小
+        self.original_image_label.setFixedSize(600, 450)
         self.detected_image_label = QLabel(self)
         self.detected_image_label.setAlignment(Qt.AlignCenter)
-        self.detected_image_label.setFixedSize(600, 450)  # 设置固定大小
+        self.detected_image_label.setFixedSize(600, 450)
         
         # 添加 QLabel 控件用于显示提示信息
         message_layout = QHBoxLayout()
@@ -82,6 +92,8 @@ class ImageViewer(QWidget):
         self.message_label2.setAlignment(Qt.AlignCenter)
         self.message_label3 = QLabel(self)
         self.message_label3.setAlignment(Qt.AlignCenter)
+        self.message_label4 = QLabel(self)
+        self.message_label4.setAlignment(Qt.AlignCenter)
 
         # 添加按钮
         button_layout = QHBoxLayout()
@@ -111,14 +123,21 @@ class ImageViewer(QWidget):
         button_layout.addWidget(self.btn_auto_process)
         button_layout2.addWidget(self.btn_open_folder)
         button_layout2.addWidget(self.btn_save)
+        result_layout.addWidget(self.progress_bar)
+        result_layout.addWidget(self.message_label4)
 
         layout.addLayout(image_layout)
         layout.addLayout(message_layout)
         layout.addWidget(self.message_label3)
         layout.addLayout(button_layout)
         layout.addLayout(button_layout2)
+        layout.addLayout(result_layout)
         layout.setAlignment(Qt.AlignCenter)
         self.setLayout(layout)
+
+        self.auto_process_thread = AutoProcessThread(parent=self)
+        self.auto_process_thread.progress_updated.connect(self.update_progress_bar)
+
 
     def show_message1(self, message):
         self.message_label1.setText(message)
@@ -128,6 +147,9 @@ class ImageViewer(QWidget):
 
     def show_message3(self, message):
         self.message_label3.setText(message)
+    
+    def show_message4(self, message):
+        self.message_label4.setText(message)
 
     def open_folder(self):
         folder_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
@@ -135,11 +157,15 @@ class ImageViewer(QWidget):
             self.images = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif'))]
             self.circles = [None for _ in range(len(self.images))]
             self.current_image_index = 0
-            self.show_message3(f"当前文件夹：{folder_path}")
+            self.detected = 0
             self.show_message2("")
+            self.show_message3(f"当前文件夹：{folder_path}")
+            self.show_message4("")
 
             self.show_image()
             self.show_image_detected()
+            self.progress_bar.setRange(0, len(self.images))
+            self.progress_bar.setValue(0)
 
     def show_image(self):
         if self.images:
@@ -152,25 +178,25 @@ class ImageViewer(QWidget):
             self.show_message1("文件夹下无图片")
 
     def show_image_detected(self):
-            if self.images:
-                image_path = self.images[self.current_image_index]
-                circles = self.circles[self.current_image_index]
-                if circles is None:
-                    self.detected_image_label.setPixmap(QPixmap(""))
-                    self.show_message2("待检测")
-                    return
-                elif circles is 0:
-                    self.detected_image_label.setPixmap(QPixmap(""))
-                    self.show_message2("未检测到瓶口")
-                    return
+        if self.images:
+            image_path = self.images[self.current_image_index]
+            circles = self.circles[self.current_image_index]
+            if circles is None:
+                self.detected_image_label.setPixmap(QPixmap(""))
+                self.show_message2("待检测")
+                return
+            elif circles is False:
+                self.detected_image_label.setPixmap(QPixmap(""))
+                self.show_message2("未检测到瓶口")
+                return
 
-                processed_image = display_circles(image_path, circles)
-                height, width, _ = processed_image.shape
-                bytes_per_line = 3 * width
-                q_image = QImage(processed_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
-                pixmap = QPixmap.fromImage(q_image)
-                self.detected_image_label.setPixmap(pixmap.scaled(self.detected_image_label.width(), self.detected_image_label.height(), Qt.KeepAspectRatio))
-                self.show_message2(f"瓶口位置：{circles}")
+            processed_image = display_circles(image_path, circles)
+            height, width, _ = processed_image.shape
+            bytes_per_line = 3 * width
+            q_image = QImage(processed_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            self.detected_image_label.setPixmap(pixmap.scaled(self.detected_image_label.width(), self.detected_image_label.height(), Qt.KeepAspectRatio))
+            self.show_message2(f"瓶口位置：{circles}")
 
     def show_previous_image(self):
         if self.images:
@@ -192,30 +218,25 @@ class ImageViewer(QWidget):
 
             circles = detect_circles(image_path=self.images[self.current_image_index])
             if circles is None:
-                circles = 0
+                circles = False
+            else:
+                self.detected += 1
             self.circles[self.current_image_index] = circles
             self.show_image_detected()
             print("处理图像: " + self.images[self.current_image_index])
+            self.show_message4(f"成功检测结果：{self.detected} / {len(self.images)}")
 
-    # def auto_process_image(self):
-    #     if self.images:
-    #         i = 0
-    #         for image_path in self.images:
-    #             if self.circles[i] is None:
-    #                 circles = detect_circles(image_path=image_path)
-    #                 if circles is None:
-    #                     circles = 0
-    #                 self.circles[i] = circles
-    #                 i = i + 1
-    #                 print("处理图像: " + image_path)
-    #             else:
-    #                 i = i + 1
-    #         self.show_image_detected()
 
     def auto_process_image(self):
         if self.images:
+            self.progress_bar.show()
             self.auto_process_thread = AutoProcessThread(parent=self)
+            self.auto_process_thread.progress_updated.connect(self.update_progress_bar)
             self.auto_process_thread.start()
+
+    def update_progress_bar(self, value):
+        self.progress_bar.setValue(value)
+        self.show_message4(f"成功检测结果：{self.detected} / {len(self.images)}")
 
     def save_list(self):
         # Saving lists to a file as an example
